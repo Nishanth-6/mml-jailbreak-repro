@@ -17,8 +17,9 @@ class OllamaVL(BaseModel):
             return out.strip()
 
 class MockModel(BaseModel):
-    def generate(self, image, prompt):  # always refuses (for sanity tests)
-        return "I'm sorry, I cannot assist with that."
+    def generate(self, image, prompt):
+        # cheap, deterministic stub so you can test everything else
+        return "MOCK_RESPONSE"
 
 def build_model(engine:str, **kwargs)->BaseModel:
     if engine=="ollama":
