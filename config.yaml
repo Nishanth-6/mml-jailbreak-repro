@@ -25,5 +25,5 @@ eval:
   judge_rule_strict: true
 
 paths:
-  data_csv: "data/safebench_subset.csv"
+  data_csv: "data/safebench_local.csv"
   out_dir: "data/images"
