@@ -1,10 +1,7 @@
-import io
-from typing import Optional
-
-from PIL import Image
-
 import torch
-from transformers import AutoProcessor, AutoModelForCausalLM
+from typing import Optional
+from PIL import Image
+from transformers import AutoProcessor, AutoModelForVision2Seq
 
 
 class BaseModel:
@@ -14,8 +11,8 @@ class BaseModel:
 
 class QwenVLVL(BaseModel):
     """
-    Vision-language wrapper for Qwen2-VL-7B. Uses the official chat_template +
-    (text, image) interface so that image tokens and features line up correctly.
+    Correct interface for Qwen2-VL models.
+    Uses Vision2Seq model class and chat template to align image tokens.
     """
 
     def __init__(
@@ -25,27 +22,25 @@ class QwenVLVL(BaseModel):
     ):
         self.model_name = model_name
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
 
-        # Processor handles both text and images
+        # Processor handles text + image together
         self.processor = AutoProcessor.from_pretrained(
-            model_name, trust_remote_code=True
-        )
-
-        # Load model on GPU if available
-        dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
-        self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
             trust_remote_code=True,
-            torch_dtype=dtype,
+        )
+
+        # Correct multimodal model class
+        self.model = AutoModelForVision2Seq.from_pretrained(
+            model_name,
+            torch_dtype=self.dtype,
+            trust_remote_code=True,
         ).to(self.device)
+
         self.model.eval()
 
     def generate(self, image: Image.Image, prompt: str) -> str:
-        """
-        Build a chat message with an image placeholder, then let the processor
-        turn it into text + image tokens. This avoids the
-        'Image features and image tokens do not match' error.
-        """
+        # Format as multimodal chat
         messages = [
             {
                 "role": "user",
@@ -56,35 +51,38 @@ class QwenVLVL(BaseModel):
             }
         ]
 
-        # Chat template inserts the special image token into the text stream
+        # Insert <image> token
         chat_text = self.processor.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
         )
 
-        # Processor now sees both text and image
+        # Build multimodal inputs
         inputs = self.processor(
             text=[chat_text],
             images=[image],
             return_tensors="pt",
         ).to(self.device)
 
+        # Generate
         with torch.no_grad():
             output_ids = self.model.generate(
                 **inputs,
                 max_new_tokens=128,
             )
 
-        generated = self.processor.batch_decode(
-            output_ids, skip_special_tokens=True
+        # Decode
+        output = self.processor.batch_decode(
+            output_ids,
+            skip_special_tokens=True,
         )[0]
-        return generated.strip()
+
+        return output.strip()
 
 
 class MockModel(BaseModel):
     def generate(self, image, prompt):
-        # Dummy model for local testing
         return "MOCK_RESPONSE"
 
 
@@ -93,5 +91,4 @@ def build_model(engine: str, **kwargs) -> BaseModel:
         return QwenVLVL(
             model_name=kwargs.get("model_name", "Qwen/Qwen2-VL-7B-Instruct")
         )
-    # Fallback used on your laptop
     return MockModel()
