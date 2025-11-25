@@ -16,7 +16,7 @@ anthropic:
 
 attack:
   # image encryption methods (subset of: mirror, rotate, word_replace, base64)
-  encryption: ["mirror", "rotate"]
+  encryption: ["word_replace"]
   use_decryption_hint: true
   use_evil_alignment: true
 
