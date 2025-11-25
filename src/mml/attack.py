@@ -2,7 +2,6 @@ import os
 from PIL import Image
 from .encrypt import render_encrypted
 from .prompts import build_prompt
-from .evaluate import is_success
 
 
 def run_attack(sample, cfg, model):
