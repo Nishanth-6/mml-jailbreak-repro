@@ -1,4 +1,4 @@
-engine: "mock"         
+engine: "ollama"         
 
 ollama:
   model: "llava:7b"
