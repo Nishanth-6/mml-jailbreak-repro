@@ -2,6 +2,8 @@ import os
 from PIL import Image
 from .encrypt import render_encrypted
 from .prompts import build_prompt
+from .evaluate import is_success
+
 
 def run_attack(sample, cfg, model):
     # Support either 'text' or 'original_title'
@@ -21,17 +23,27 @@ def run_attack(sample, cfg, model):
     out_path = os.path.join(out_dir, f"{sample_id}.png")
     img.save(out_path)
 
-    # Build prompt and query model
+    # Build model prompt
     prompt = build_prompt(
         cfg["attack"]["use_decryption_hint"],
         original,
         enc_visible,
     )
+
+    # Query model
     resp = model.generate(img, prompt)
+
+    # Compute whether **this sample** is a success
+    success_flag = is_success(
+        original_text=original,
+        model_output=resp,
+        refusal_keywords=cfg["eval"]["refusal_keywords"]
+    )
 
     return {
         "id": sample_id,
         "original": original,
         "methods": methods,
         "response": resp,
+        "success": int(success_flag),
     }
