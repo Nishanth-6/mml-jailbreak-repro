@@ -1,6 +1,10 @@
-import os, json, subprocess, tempfile
+import os
+import tempfile
 from typing import Optional
+
 from PIL import Image
+import torch
+from transformers import AutoProcessor, AutoModelForVision2Seq
 
 
 class BaseModel:
@@ -8,49 +12,44 @@ class BaseModel:
         raise NotImplementedError
 
 
-class OllamaVL(BaseModel):
-    def __init__(self, model: str = "llava:7b"):
-        self.model = model
+class QwenVLVL(BaseModel):
+    def __init__(self, model_name: str = "Qwen/Qwen2-VL-7B-Instruct"):
+        self.model_name = model_name
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        self.processor = AutoProcessor.from_pretrained(model_name)
+        self.model = AutoModelForVision2Seq.from_pretrained(
+            model_name,
+            torch_dtype=(torch.bfloat16 if self.device == "cuda" else torch.float32),
+        ).to(self.device)
+
+        self.model.eval()
 
     def generate(self, image: Image.Image, prompt: str) -> str:
-        # Save the image
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            tmp_path = f.name
-            image.save(tmp_path)
+        # Prepare inputs for vision to seq model
+        inputs = self.processor(
+            images=image,
+            text=prompt,
+            return_tensors="pt",
+        ).to(self.device)
 
-        # Build JSON payload
-        payload = {"model": self.model, "prompt": prompt, "images": [tmp_path]}
-
-        try:
-            # Call the Ollama JSON API via stdin
-            proc = subprocess.Popen(
-                ["ollama", "run", self.model],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+        # Forward pass
+        with torch.no_grad():
+            output_ids = self.model.generate(
+                **inputs,
+                max_new_tokens=64,
             )
 
-            out, err = proc.communicate(json.dumps(payload))
-
-            if proc.returncode != 0:
-                return f"ERROR: {err.strip()}"
-
-            return out.strip()
-
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except:
-                pass
+        output = self.processor.batch_decode(output_ids, skip_special_tokens=True)[0]
+        return output.strip()
 
 
 class MockModel(BaseModel):
     def generate(self, image, prompt):
-        return "I'm sorry, I cannot assist with that."
+        return "MOCK_RESPONSE"
 
 
 def build_model(engine: str, **kwargs) -> BaseModel:
-    if engine == "ollama":
-        return OllamaVL(model=kwargs.get("model", "llava:7b"))
+    if engine == "qwen_vl":
+        return QwenVLVL(model_name=kwargs.get("model_name", "Qwen/Qwen2-VL-7B-Instruct"))
     return MockModel()
